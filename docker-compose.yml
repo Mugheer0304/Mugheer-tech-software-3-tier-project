@@ -1,5 +1,17 @@
 # Mugheer local development stack.
-#   docker compose up --build
+#
+# Default (minimal dev stack):  docker compose up --build -d
+#   → postgres, redis, backend-core only
+#
+# Add more with profiles:
+#   --profile app         worker + frontend (the full application)
+#   --profile tools       mailhog + minio (email + object storage)
+#   --profile ai          the 4 AI microservices
+#   --profile monitoring  prometheus + grafana + alertmanager
+#
+# Everything at once:
+#   docker compose --profile app --profile tools --profile ai --profile monitoring up --build -d
+#
 # Then:  docker compose exec backend-core npx prisma migrate deploy
 #        docker compose exec backend-core npx prisma db seed
 services:
@@ -28,10 +40,12 @@ services:
 
   mailhog:
     image: mailhog/mailhog:latest
+    profiles: ["tools"]
     ports: ["1025:1025", "8025:8025"]
 
   minio:
     image: minio/minio:latest
+    profiles: ["tools"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: mugheer
@@ -58,6 +72,7 @@ services:
 
   worker:
     build: ./worker
+    profiles: ["app"]
     env_file: .env.example
     environment:
       DATABASE_URL: postgresql://mugheer:mugheer@postgres:5432/mugheer?schema=public
@@ -71,6 +86,7 @@ services:
 
   frontend:
     build: ./frontend
+    profiles: ["app"]
     environment:
       VITE_API_URL: http://localhost:3000/api/v1
       VITE_WS_URL: ws://localhost:3000
@@ -79,6 +95,7 @@ services:
 
   ai-anomaly:
     build: ./ai-services/anomaly-detection
+    profiles: ["ai"]
     ports: ["8101:8101"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8101/health')"]
@@ -88,30 +105,35 @@ services:
 
   ai-triage:
     build: ./ai-services/support-triage
+    profiles: ["ai"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["8102:8102"]
 
   ai-scoping:
     build: ./ai-services/scoping-assistant
+    profiles: ["ai"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["8103:8103"]
 
   ai-codeassist:
     build: ./ai-services/code-assist
+    profiles: ["ai"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["8104:8104"]
 
   prometheus:
     image: prom/prometheus:latest
+    profiles: ["monitoring"]
     volumes:
       - ./monitoring/prometheus:/etc/prometheus:ro
     ports: ["9090:9090"]
 
   grafana:
     image: grafana/grafana:latest
+    profiles: ["monitoring"]
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
@@ -122,6 +144,7 @@ services:
 
   alertmanager:
     image: prom/alertmanager:latest
+    profiles: ["monitoring"]
     volumes:
       - ./monitoring/alertmanager:/etc/alertmanager:ro
     ports: ["9093:9093"]
