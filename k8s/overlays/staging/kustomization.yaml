@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mugheer-staging
+resources:
+  - ../../base
+images:
+  - name: registry.example.com/mugheer/backend-core
+    newTag: staging
+  - name: registry.example.com/mugheer/frontend
+    newTag: staging
+  - name: registry.example.com/mugheer/worker
+    newTag: staging
+patches:
+  - target:
+      kind: Deployment
+      name: backend-core
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1

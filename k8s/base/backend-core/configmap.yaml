@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  CORS_ORIGIN: "https://app.mugheer.com"
+  SMTP_PORT: "587"
+  AI_ANOMALY_URL: "http://ai-anomaly:8101"
+  AI_TRIAGE_URL: "http://ai-triage:8102"
+  AI_SCOPING_URL: "http://ai-scoping:8103"
+  AI_CODEASSIST_URL: "http://ai-codeassist:8104"
+  PROMETHEUS_URL: "http://prometheus:9090"

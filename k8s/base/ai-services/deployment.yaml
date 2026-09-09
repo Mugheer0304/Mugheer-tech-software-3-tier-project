@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-anomaly
+  labels: { app: ai-anomaly, tier: ai }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ai-anomaly }
+  template:
+    metadata:
+      labels: { app: ai-anomaly, tier: ai }
+    spec:
+      containers:
+        - name: ai-anomaly
+          image: registry.example.com/mugheer/ai-anomaly:latest
+          ports: [{ containerPort: 8101 }]
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8101 }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: 8101 }
+            initialDelaySeconds: 15
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-anomaly
+spec:
+  selector: { app: ai-anomaly }
+  ports: [{ port: 8101, targetPort: 8101 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-triage
+  labels: { app: ai-triage, tier: ai }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ai-triage }
+  template:
+    metadata:
+      labels: { app: ai-triage, tier: ai }
+    spec:
+      containers:
+        - name: ai-triage
+          image: registry.example.com/mugheer/ai-triage:latest
+          ports: [{ containerPort: 8102 }]
+          envFrom:
+            - secretRef: { name: ai-secrets }
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8102 }
+            initialDelaySeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-triage
+spec:
+  selector: { app: ai-triage }
+  ports: [{ port: 8102, targetPort: 8102 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-scoping
+  labels: { app: ai-scoping, tier: ai }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ai-scoping }
+  template:
+    metadata:
+      labels: { app: ai-scoping, tier: ai }
+    spec:
+      containers:
+        - name: ai-scoping
+          image: registry.example.com/mugheer/ai-scoping:latest
+          ports: [{ containerPort: 8103 }]
+          envFrom:
+            - secretRef: { name: ai-secrets }
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8103 }
+            initialDelaySeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-scoping
+spec:
+  selector: { app: ai-scoping }
+  ports: [{ port: 8103, targetPort: 8103 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-codeassist
+  labels: { app: ai-codeassist, tier: ai }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ai-codeassist }
+  template:
+    metadata:
+      labels: { app: ai-codeassist, tier: ai }
+    spec:
+      containers:
+        - name: ai-codeassist
+          image: registry.example.com/mugheer/ai-codeassist:latest
+          ports: [{ containerPort: 8104 }]
+          envFrom:
+            - secretRef: { name: ai-secrets }
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8104 }
+            initialDelaySeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-codeassist
+spec:
+  selector: { app: ai-codeassist }
+  ports: [{ port: 8104, targetPort: 8104 }]

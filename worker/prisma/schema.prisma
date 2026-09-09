@@ -1,0 +1,688 @@
+// Mugheer — complete data model (Prisma schema)
+// All entities from Section 14 of the master spec, with tenant scoping,
+// soft-delete where appropriate, and explicit FK behavior.
+
+generator client {
+  provider      = "prisma-client-js"
+  // Pin both engine variants: host machines may generate against OpenSSL 1.1
+  // while node:20-slim (Debian 12) containers run OpenSSL 3.0.
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------- Identity ---------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN // internal Admin / PM
+  ENGINEER
+  DESIGNER
+  CLIENT_OWNER
+  CLIENT_MEMBER
+  SUPPORT
+  AI_AGENT
+}
+
+enum OrgType {
+  INTERNAL
+  CLIENT
+}
+
+enum ActorType {
+  USER
+  AI_AGENT
+  SYSTEM
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String?   // null for OAuth-only accounts
+  name           String
+  role           Role      @default(CLIENT_MEMBER)
+  mfaSecret      String?   // TOTP secret (encrypted at rest by app layer)
+  mfaEnabled     Boolean   @default(false)
+  avatarUrl      String?
+  googleId       String?   @unique
+  githubId       String?   @unique
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  memberships      OrganizationMember[]
+  assignedTasks    Task[]               @relation("TaskAssignee")
+  createdTasks     Task[]               @relation("TaskCreator")
+  comments         Comment[]
+  designApprovals  DesignArtifact[]     @relation("DesignApprover")
+  alertsAcked      Alert[]              @relation("AlertAcknowledger")
+  refreshTokens    RefreshToken[]
+  sentMessages     Message[]
+  ticketMessages   TicketMessage[]
+  auditLogs        AuditLog[]
+  apiKeys          ApiKey[]
+  aiActionLogs     AiActionLog[]
+}
+
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  type             OrgType  @default(CLIENT)
+  billingCustomerId String? // Stripe customer id
+  taxRate          Float    @default(0)
+  taxRegion        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  members       OrganizationMember[]
+  products      Product[]
+  tickets       Ticket[]
+  invoices      Invoice[]
+  subscriptions Subscription[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  aiActionLogs  AiActionLog[]
+  projectFiles  ProjectFile[]
+  messages      Message[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           Role // org-scoped role
+  invitedBy      String?
+  joinedAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  family    String // rotation family — reuse detection invalidates whole family
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  organizationId String
+  name       String
+  keyHash    String    @unique
+  prefix     String // first 8 chars, shown in UI for identification
+  scopes     String[]  // e.g. ["deploys:write", "metrics:push"]
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [createdBy], references: [id])
+
+  @@index([organizationId])
+}
+
+// ------------------------------- Catalog -----------------------------------
+
+enum ServiceLine {
+  WEB_APP_DEVELOPMENT
+  PRODUCT_DESIGN
+  BACKEND_API_DEVELOPMENT
+  MOBILE_APP_DEVELOPMENT
+  MANAGED_MONITORING
+  AUTOMATION_ENGINEERING
+  AI_INTEGRATION
+  MAINTENANCE_RETAINER
+}
+
+enum PricingModel {
+  ONE_TIME
+  MILESTONE
+  SUBSCRIPTION
+  USAGE
+}
+
+model PricingPlan {
+  id           String       @id @default(cuid())
+  serviceLine  ServiceLine
+  name         String
+  description  String
+  pricingModel PricingModel
+  basePrice    Float
+  currency     String       @default("USD")
+  stripePriceId String?
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  subscriptions Subscription[]
+}
+
+// ------------------------------- Products ----------------------------------
+
+enum ProductStatus {
+  REQUESTED
+  SCOPED
+  IN_DESIGN
+  IN_DEVELOPMENT
+  IN_QA
+  STAGED
+  LAUNCHED
+  MONITORED
+  ARCHIVED
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  orgId       String
+  serviceLine ServiceLine
+  name        String
+  slug        String
+  description String?
+  status      ProductStatus @default(REQUESTED)
+  stagingUrl  String?
+  productionUrl String?
+  healthCheckPath String   @default("/health")
+  monitorEnabled Boolean   @default(false)
+  monitorUrl  String? // endpoint we probe / scrape metrics from
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization      @relation(fields: [orgId], references: [id])
+  stages       ProductStage[]
+  tasks        Task[]
+  designArtifacts DesignArtifact[]
+  deployments  Deployment[]
+  metrics      MonitoringMetric[]
+  dailyMetrics MonitoringMetricDaily[] @relation("ProductDailyMetrics")
+  alerts       Alert[]
+  runbooks     AutomationRunbook[]
+  tickets      Ticket[]
+  files        ProjectFile[]
+  comments     Comment[]
+  aiInsights   AiInsight[]
+  quote        Quote?
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+}
+
+model ProductStage {
+  id         String    @id @default(cuid())
+  productId  String
+  stageName  String // requested, scoped, in_design, ...
+  enteredAt  DateTime  @default(now())
+  exitedAt   DateTime?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  BLOCKED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id          String      @id @default(cuid())
+  productId   String
+  title       String
+  description String?
+  status      TaskStatus  @default(BACKLOG)
+  priority    TaskPriority @default(MEDIUM)
+  assigneeId  String?
+  creatorId   String?
+  sprintId    String?
+  storyPoints Int?
+  gitBranch   String?
+  gitPrUrl    String?
+  dueDate     DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  assignee User? @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator  User? @relation("TaskCreator", fields: [creatorId], references: [id])
+
+  @@index([productId])
+  @@index([assigneeId])
+}
+
+model DesignArtifact {
+  id         String    @id @default(cuid())
+  productId  String
+  name       String
+  fileUrl    String // S3 key
+  version    Int       @default(1)
+  approvedById String?
+  approvedAt DateTime?
+  rejected   Boolean   @default(false)
+  feedback   String?
+  createdAt  DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("DesignApprover", fields: [approvedById], references: [id])
+
+  @@index([productId])
+}
+
+model ProjectFile {
+  id        String   @id @default(cuid())
+  productId String?
+  orgId     String
+  name      String
+  fileUrl   String // S3 key
+  sizeBytes Int
+  mimeType  String
+  uploadedById String?
+  createdAt DateTime @default(now())
+
+  product Product?  @relation(fields: [productId], references: [id])
+  org     Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+}
+
+model Deployment {
+  id          String   @id @default(cuid())
+  productId   String
+  environment String // staging | production
+  commitSha   String
+  commitMsg   String?
+  status      String // pending | success | failed | rolled_back
+  triggeredBy String? // user id or "automation:<runbook-id>"
+  deployedAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+// ---------------------------- Monitoring -----------------------------------
+
+// Hot metrics live in TimescaleDB via this hypertable-style table; the worker
+// also downsamples into MonitoringMetricDaily for long retention.
+model MonitoringMetric {
+  id         String   @id @default(cuid())
+  productId  String
+  metricName String // response_time_ms, error_rate, cpu_percent, uptime
+  value      Float
+  timestamp  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, metricName, timestamp])
+}
+
+model MonitoringMetricDaily {
+  id         String   @id @default(cuid())
+  productId  String
+  metricName String
+  avgValue   Float
+  maxValue   Float
+  minValue   Float
+  day        DateTime @db.Date
+
+  product Product @relation("ProductDailyMetrics", fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, metricName, day])
+}
+
+enum AlertSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model Alert {
+  id           String        @id @default(cuid())
+  productId    String
+  severity     AlertSeverity
+  message      String
+  metricName   String?
+  metricValue  Float?
+  aiConfidence Float? // anomaly detection confidence 0..1
+  aiRootCause  String? // AI-suggested root cause
+  aiRunbookId  String? // AI-suggested runbook
+  status       AlertStatus   @default(OPEN)
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+  resolvedAt   DateTime?
+  createdAt    DateTime      @default(now())
+
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  acknowledgedBy User?  @relation("AlertAcknowledger", fields: [acknowledgedById], references: [id])
+
+  @@index([productId, status])
+}
+
+enum RunbookAction {
+  RESTART_SERVICE
+  SCALE_UP
+  SCALE_DOWN
+  SEND_EMAIL
+  SEND_SLACK
+  OPEN_TICKET
+  GENERATE_REPORT
+  WEBHOOK
+}
+
+model AutomationRunbook {
+  id        String        @id @default(cuid())
+  productId String?
+  name      String
+  description String?
+  trigger   String // metric_threshold | schedule | alert_created
+  condition String? // e.g. "cpu_percent > 85 for 5m"
+  metricName String?
+  threshold Float?
+  durationSec Int?
+  action    RunbookAction
+  actionConfig Json?
+  enabled   Boolean       @default(true)
+  lastRunAt DateTime?
+  runCount  Int           @default(0)
+  maxRetries Int          @default(3) // bounded automation — never infinite
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+}
+
+model AiInsight {
+  id        String   @id @default(cuid())
+  productId String
+  period    String // e.g. "2026-09-W36" or "2026-09"
+  summary   String // natural-language health summary (AI-generated)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, period])
+}
+
+// --------------------------- Collaboration ---------------------------------
+
+model Ticket {
+  id          String   @id @default(cuid())
+  productId   String?
+  orgId       String
+  subject     String
+  category    String   @default("general") // bug | feature | billing | general | urgent
+  priority    String   @default("normal")
+  status      String   @default("open") // open | triaged | pending | resolved | closed
+  aiSuggestedReply String?
+  aiCategoryConfidence Float?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product   Product?        @relation(fields: [productId], references: [id])
+  org       Organization    @relation(fields: [orgId], references: [id])
+  messages  TicketMessage[]
+
+  @@index([orgId])
+  @@index([productId])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String?
+  authorType ActorType @default(USER)
+  body      String
+  isAiDraft Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?  @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  productId String
+  authorId  String
+  body      String
+  designArtifactId String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@index([productId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  orgId     String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author  User         @relation(fields: [authorId], references: [id])
+
+  @@index([orgId])
+}
+
+// ------------------------------- Billing -----------------------------------
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  orgId        String
+  amount       Float
+  taxAmount    Float         @default(0)
+  currency     String        @default("USD")
+  status       InvoiceStatus @default(DRAFT)
+  stripeInvoiceId String?    @unique
+  paypalOrderId   String?
+  dueDate     DateTime?
+  paidAt      DateTime?
+  refundedAmount Float     @default(0)
+  refundedAt  DateTime?
+  lineItems   Json? // [{description, quantity, unitPrice}]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  payments     Payment[]
+
+  @@index([orgId])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  invoiceId  String
+  amount     Float
+  currency   String   @default("USD")
+  method     String // stripe | paypal
+  providerRef String? // charge/payment intent id
+  status     String   @default("succeeded")
+  createdAt  DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  PAUSED
+}
+
+model Subscription {
+  id         String             @id @default(cuid())
+  orgId      String
+  planId     String
+  status     SubscriptionStatus @default(ACTIVE)
+  stripeSubscriptionId String?  @unique
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean    @default(false)
+  dunningAttempts Int         @default(0)
+  lastDunningAt DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  plan         PricingPlan  @relation(fields: [planId], references: [id])
+
+  @@index([orgId])
+}
+
+model Quote {
+  id        String   @id @default(cuid())
+  productId String   @unique
+  amount    Float
+  currency  String   @default("USD")
+  breakdown Json? // milestone breakdown [{name, percent, amount}]
+  status    String   @default("draft") // draft | sent | approved | rejected
+  validUntil DateTime?
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------- Notifications ---------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  type      String // alert | invoice | ticket | project | system
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId])
+}
+
+// ---------------------------- Audit & AI gov -------------------------------
+
+model AuditLog {
+  id        String    @id @default(cuid())
+  actorType ActorType // USER | AI_AGENT | SYSTEM
+  actorId   String?
+  orgId     String?
+  action    String // e.g. "invoice.refund", "runbook.execute", "ticket.reply"
+  target    String? // e.g. "invoice:clx..."
+  details   Json?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  user         User?         @relation(fields: [actorId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([actorType, actorId])
+}
+
+model AiActionLog {
+  id          String   @id @default(cuid())
+  orgId       String?
+  productId   String?
+  feature     String // anomaly_detection | support_triage | scoping | code_assist | report_gen
+  model       String
+  modelVersion String?
+  inputHash   String // sha256 of input context
+  confidence  Float?
+  humanApproved Boolean @default(false)
+  approvedById String?
+  tokensUsed  Int?
+  costUsd     Float?
+  createdAt   DateTime @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  approvedBy   User?         @relation(fields: [approvedById], references: [id])
+
+  @@index([orgId, createdAt])
+}
+
+model UsageRecord {
+  id        String   @id @default(cuid())
+  orgId     String
+  metric    String // e.g. monitored_endpoints
+  quantity  Int
+  recordedAt DateTime @default(now())
+  reportedToStripe Boolean @default(false)
+
+  @@index([orgId, metric])
+}
+
+// ------------------------------ Webhooks -----------------------------------
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  source      String // stripe | github | monitoring
+  externalId  String   @unique // provider event id — guarantees idempotency
+  type        String
+  payload     Json
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime @default(now())
+}

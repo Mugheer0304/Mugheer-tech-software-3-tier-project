@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+frontend/node_modules/
+backend-core/node_modules/
+worker/node_modules/
+**/__pycache__/
+*.pyc
+.venv/
+
+# builds
+frontend/dist/
+backend-core/dist/
+worker/dist/
+coverage/
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# prisma
+backend-core/prisma/*.db
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars.bak
+crash.log
+
+# kubernetes secrets (use external-secrets instead)
+k8s/**/secret-values.yaml
+
+# logs / temp
+*.log
+.DS_Store
+tmp/
+
+# test artifacts
+test-results/
+playwright-report/
+.vitest-cache/

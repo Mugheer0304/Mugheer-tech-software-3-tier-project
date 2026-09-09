@@ -1,0 +1,1 @@
+Worker reuses backend-core's Prisma schema. Symlink or copy backend-core/prisma/schema.prisma here before building the worker image standalone.

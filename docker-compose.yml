@@ -1,0 +1,131 @@
+# Mugheer local development stack.
+#   docker compose up --build
+# Then:  docker compose exec backend-core npx prisma migrate deploy
+#        docker compose exec backend-core npx prisma db seed
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mugheer
+      POSTGRES_PASSWORD: mugheer
+      POSTGRES_DB: mugheer
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mugheer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports: ["1025:1025", "8025:8025"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: mugheer
+      MINIO_ROOT_PASSWORD: mugheer-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+  backend-core:
+    build: ./backend-core
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql://mugheer:mugheer@postgres:5432/mugheer?schema=public
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      AI_ANOMALY_URL: http://ai-anomaly:8101
+      AI_TRIAGE_URL: http://ai-triage:8102
+      AI_SCOPING_URL: http://ai-scoping:8103
+      AI_CODEASSIST_URL: http://ai-codeassist:8104
+      CORS_ORIGIN: http://localhost:5173
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: ./worker
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql://mugheer:mugheer@postgres:5432/mugheer?schema=public
+      REDIS_URL: redis://redis:6379
+      BACKEND_INTERNAL_URL: http://backend-core:3000
+      SMTP_HOST: mailhog
+      AI_ANOMALY_URL: http://ai-anomaly:8101
+    depends_on:
+      backend-core: { condition: service_started }
+      redis: { condition: service_healthy }
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_URL: http://localhost:3000/api/v1
+      VITE_WS_URL: ws://localhost:3000
+    ports: ["5173:5173"]
+    depends_on: [backend-core]
+
+  ai-anomaly:
+    build: ./ai-services/anomaly-detection
+    ports: ["8101:8101"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8101/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ai-triage:
+    build: ./ai-services/support-triage
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports: ["8102:8102"]
+
+  ai-scoping:
+    build: ./ai-services/scoping-assistant
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports: ["8103:8103"]
+
+  ai-codeassist:
+    build: ./ai-services/code-assist
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports: ["8104:8104"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+    ports: ["9093:9093"]
+
+volumes:
+  pgdata:
+  miniodata:

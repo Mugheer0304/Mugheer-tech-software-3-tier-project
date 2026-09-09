@@ -1,0 +1,25 @@
+groups:
+  - name: mugheer-platform
+    rules:
+      - alert: BackendCoreDown
+        expr: up{job="backend-core"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "backend-core is unreachable"
+          runbook: "https://docs.mugheer.com/runbook#backend-down"
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx rate above 5% for 5 minutes"
+      - alert: AiServiceDown
+        expr: up{job=~"ai-.*"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "An AI microservice is down — features degrade gracefully to heuristics"

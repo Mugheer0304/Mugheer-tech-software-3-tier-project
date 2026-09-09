@@ -1,0 +1,67 @@
+name: CD — Production
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # requires manual approval in GitHub settings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build & push images (versioned)
+        run: |
+          REG="${{ steps.ecr.outputs.registry }}"
+          TAG="${GITHUB_REF_NAME:-production}"
+          for svc in backend-core frontend worker; do
+            docker build -t "$REG/mugheer-$svc:$TAG" ./$svc
+            docker push "$REG/mugheer-$svc:$TAG"
+          done
+          declare -A ports=( [anomaly-detection]=ai-anomaly [support-triage]=ai-triage [scoping-assistant]=ai-scoping [code-assist]=ai-codeassist )
+          for dir in "${!ports[@]}"; do
+            docker build -t "$REG/mugheer-${ports[$dir]}:$TAG" ./ai-services/$dir
+            docker push "$REG/mugheer-${ports[$dir]}:$TAG"
+          done
+          cp backend-core/prisma/schema.prisma worker/prisma/schema.prisma
+          docker build -t "$REG/mugheer-worker:$TAG" ./worker
+          docker push "$REG/mugheer-worker:$TAG"
+
+      - name: Terraform apply (production)
+        working-directory: terraform/environments/production
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+
+      - name: Deploy to production namespace
+        run: |
+          aws eks update-kubeconfig --name mugheer-production
+          kubectl apply -k k8s/overlays/production
+          kubectl set image deployment/backend-core "backend-core=${{ steps.ecr.outputs.registry }}/mugheer-backend-core:${GITHUB_REF_NAME:-production}" -n mugheer-production
+
+      - name: Health checks + auto-rollback
+        run: |
+          ns=mugheer-production
+          for i in $(seq 1 12); do
+            if ./scripts/smoke-test.sh https://api.mugheer.com; then
+              echo "Healthy."; exit 0
+            fi
+            echo "Attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Health checks failed — rolling back"
+          kubectl rollout undo deployment/backend-core -n $ns
+          kubectl rollout undo deployment/frontend -n $ns
+          exit 1

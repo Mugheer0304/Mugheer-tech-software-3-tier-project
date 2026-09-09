@@ -1,0 +1,64 @@
+# Three-tier network enforcement:
+# - frontend -> backend only
+# - backend  -> postgres, redis, ai services
+# - default deny everywhere else
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+spec:
+  podSelector:
+    matchLabels: { tier: application }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { tier: presentation }
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-data
+spec:
+  podSelector:
+    matchLabels: { tier: data }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { tier: application }
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-ai
+spec:
+  podSelector:
+    matchLabels: { tier: ai }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { tier: application }
+      ports:
+        - protocol: TCP
+          port: 8101
+        - protocol: TCP
+          port: 8102
+        - protocol: TCP
+          port: 8103
+        - protocol: TCP
+          port: 8104

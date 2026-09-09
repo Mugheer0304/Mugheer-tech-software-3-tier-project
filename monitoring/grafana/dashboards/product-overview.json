@@ -1,0 +1,53 @@
+{
+  "title": "Mugheer — Product Overview",
+  "uid": "product-overview",
+  "tags": ["mugheer"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "product",
+        "type": "textbox",
+        "label": "Product ID",
+        "query": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Response time (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "avg(response_time_ms{product=\"$product\"})", "legendFormat": "avg" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "avg(error_rate{product=\"$product\"})", "legendFormat": "error rate" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Uptime (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "avg_over_time(uptime{product=\"$product\"}[24h]) * 100" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "CPU %",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "avg(cpu_percent{product=\"$product\"})" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}
