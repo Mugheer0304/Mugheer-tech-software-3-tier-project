@@ -1,0 +1,13 @@
+{
+  "name": "mugheer-e2e",
+  "version": "1.0.0",
+  "description": "Mugheer — Playwright end-to-end journeys (client + internal).",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.46.0"
+  }
+}

@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, post } from '../../lib/api';
 import { Card, CardHeader, Button, Badge, Stat } from '../../components/ui';
+import { API_URL } from '../../lib/api';
+import { getAccessToken } from '../../lib/api';
 
 interface Invoice {
   id: string;
@@ -93,7 +95,32 @@ export function BillingPage() {
                       <Button size="sm" onClick={() => pay.mutate(inv.id)} disabled={pay.isPending}>
                         Pay now
                       </Button>
-                    )}
+                    )}{' '}
+                    <a
+                      href={`${API_URL}/billing/invoices/${inv.id}/download`}
+                      onClick={(e) => {
+                        // fetch with auth header then download, since the endpoint requires JWT
+                        e.preventDefault();
+                        void fetch(`${API_URL}/billing/invoices/${inv.id}/download`, {
+                          headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` },
+                          credentials: 'include',
+                        })
+                          .then((r) => (r.ok ? r.text() : Promise.reject(new Error('Download failed'))))
+                          .then((text) => {
+                            const blob = new Blob([text], { type: 'text/plain' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${inv.number}.txt`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          })
+                          .catch(() => window.alert('Could not download invoice'));
+                      }}
+                      className="text-xs text-brand-600 hover:underline"
+                    >
+                      Download
+                    </a>
                   </td>
                 </tr>
               ))}

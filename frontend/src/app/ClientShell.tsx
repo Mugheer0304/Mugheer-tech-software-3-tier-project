@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { get } from '../lib/api';
 import { useAuth } from '../lib/auth.store';
+import { COMPANY } from '../lib/company';
 
 interface Notification {
   id: string;
@@ -13,6 +14,7 @@ interface Notification {
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', end: true },
+  { to: '/services', label: 'Services' },
   { to: '/projects/new', label: 'Request a Product' },
   { to: '/tickets', label: 'Support' },
   { to: '/billing', label: 'Billing' },
@@ -76,6 +78,24 @@ export function ClientShell() {
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
+        {/* Dashboard footer — company contact details per spec Section 27 */}
+        <footer className="border-t border-slate-200 bg-white px-6 py-3 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              © {new Date().getFullYear()} {COMPANY.name} ·{' '}
+              <a href={`mailto:${COMPANY.email}`} className="text-brand-600 hover:underline">
+                {COMPANY.email}
+              </a>{' '}
+              ·{' '}
+              <a href={`tel:${COMPANY.phone.replace(/\s/g, '')}`} className="text-brand-600 hover:underline">
+                {COMPANY.phone}
+              </a>
+            </span>
+            <Link to="/tickets" className="text-brand-600 hover:underline">
+              Get Support
+            </Link>
+          </div>
+        </footer>
       </div>
     </div>
   );

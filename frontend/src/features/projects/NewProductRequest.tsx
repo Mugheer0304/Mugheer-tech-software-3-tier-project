@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,9 +25,14 @@ const SERVICE_LINES = [
 export function NewProductRequest() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const preselected = searchParams.get('service');
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [serviceLine, setServiceLine] = useState('WEB_APP_DEVELOPMENT');
+  const [serviceLine, setServiceLine] = useState(
+    preselected && SERVICE_LINES.some(([v]) => v === preselected) ? preselected : 'WEB_APP_DEVELOPMENT',
+  );
   const [brief, setBrief] = useState<AiBrief | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

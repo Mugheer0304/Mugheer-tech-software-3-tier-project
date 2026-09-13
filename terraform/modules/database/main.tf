@@ -87,6 +87,11 @@ output "db_endpoint" {
   value = aws_db_instance.postgres.address
 }
 
+output "db_instance_id" {
+  description = "RDS instance identifier — consumed by the monitoring module's CloudWatch alarms."
+  value       = aws_db_instance.postgres.identifier
+}
+
 output "db_secret_arn" {
   value = aws_secretsmanager_secret.db.arn
 }

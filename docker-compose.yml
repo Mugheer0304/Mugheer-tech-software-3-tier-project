@@ -44,7 +44,8 @@ services:
     ports: ["1025:1025", "8025:8025"]
 
   minio:
-    image: minio/minio:latest
+    # MinIO publishes to Quay since 2025 (docker.io/minio/minio no longer updated/available)
+    image: quay.io/minio/minio:latest
     profiles: ["tools"]
     command: server /data --console-address ":9001"
     environment:
@@ -88,8 +89,11 @@ services:
     build: ./frontend
     profiles: ["app"]
     environment:
-      VITE_API_URL: http://localhost:3000/api/v1
-      VITE_WS_URL: ws://localhost:3000
+      # Relative API base — proxied to backend-core by vite (dev + preview)
+      VITE_API_URL: /api/v1
+      VITE_WS_URL: /
+      # Where the preview proxy forwards /api requests
+      BACKEND_ORIGIN: http://backend-core:3000
     ports: ["5173:5173"]
     depends_on: [backend-core]
 

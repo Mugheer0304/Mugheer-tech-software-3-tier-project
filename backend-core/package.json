@@ -17,10 +17,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run -c vitest.config.ts",
-    "test:integration": "vitest run -c vitest.integration.config.ts"
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "test:verify": "vitest run -c vitest.verify.config.ts"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.1",
@@ -35,16 +36,16 @@
     "@prisma/client": "^5.19.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.12.0",
-    "cookie-parser": "^1.4.6",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "cookie-parser": "^1.4.6",
     "helmet": "^7.1.0",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.14",
+    "otplib": "^12.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
-    "otplib": "^12.0.1",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -63,7 +64,8 @@
     "@types/qrcode": "^1.5.5",
     "@types/ws": "^8.5.11",
     "prisma": "^5.19.0",
-    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^2.0.5"
   }
 }

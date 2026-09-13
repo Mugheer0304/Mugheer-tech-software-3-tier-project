@@ -4,6 +4,8 @@ import { useAuth, isInternal } from '../lib/auth.store';
 import { Login } from '../features/auth/Login';
 import { Signup } from '../features/auth/Signup';
 import { Landing } from '../features/landing/Landing';
+import { ContactPage } from '../features/contact/ContactPage';
+import { ServicesCatalog } from '../features/services/ServicesCatalog';
 import { ClientShell } from './ClientShell';
 import { InternalShell } from './InternalShell';
 import { ClientDashboard } from '../features/projects/ClientDashboard';
@@ -17,6 +19,7 @@ import { AdminDashboard } from '../features/admin/AdminDashboard';
 import { AdminProducts } from '../features/admin/AdminProducts';
 import { AdminBilling } from '../features/admin/AdminBilling';
 import { AdminAudit } from '../features/admin/AdminAudit';
+import { AdminServiceCatalog } from '../features/admin/AdminServiceCatalog';
 
 export default function App() {
   const { user, loading, loadSession } = useAuth();
@@ -37,6 +40,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/contact" element={<ContactPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
@@ -52,11 +56,13 @@ export default function App() {
         <Route path="/projects" element={<Navigate to="/dashboard" replace />} />
         <Route path="/projects/:id" element={<ProductDetail />} />
         <Route path="/projects/new" element={<NewProductRequest />} />
+        <Route path="/services" element={<ServicesCatalog />} />
         <Route path="/projects/:id/monitoring" element={<MonitoringPage />} />
         <Route path="/automation" element={<AutomationPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/tickets" element={<TicketsPage />} />
         {internal && <Route path="/admin/products" element={<AdminProducts />} />}
+        {internal && <Route path="/admin/services" element={<AdminServiceCatalog />} />}
         {internal && <Route path="/admin/billing" element={<AdminBilling />} />}
         {internal && <Route path="/admin/audit" element={<AdminAudit />} />}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

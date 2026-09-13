@@ -54,6 +54,158 @@ async function main() {
     create: { organizationId: internalOrg.id, userId: engineer.id, role: 'ENGINEER' },
   });
 
+  // ------------------------------------------------------ service line catalog
+  // Drives the Service Box UI on the landing page, client dashboard and admin
+  // console (spec Section 4.1) — content changes here need no frontend redeploy.
+  const serviceCatalog: {
+    slug: string;
+    serviceLine: string;
+    name: string;
+    summary: string;
+    description: string;
+    icon: string;
+    startingPrice: number;
+    timelineWeeks: number;
+    includes: string[];
+    isMostRequested?: boolean;
+    sortOrder: number;
+  }[] = [
+    {
+      slug: 'web-app-development',
+      serviceLine: 'WEB_APP_DEVELOPMENT',
+      name: 'Website / Web App Development',
+      summary: 'Custom sites, portals, and web applications built end-to-end.',
+      description:
+        'From marketing sites to complex portals and SaaS products: architecture, implementation, QA, and deployment. Every build ships with CI/CD, staging previews, and monitoring hooks from day one.',
+      icon: '🌐',
+      startingPrice: 6000,
+      timelineWeeks: 6,
+      includes: ['Discovery & scoping', 'UI + API implementation', 'Staging + production deployment', '30 days post-launch support'],
+      isMostRequested: true,
+      sortOrder: 1,
+    },
+    {
+      slug: 'product-design',
+      serviceLine: 'PRODUCT_DESIGN',
+      name: 'Product Design (UI/UX)',
+      summary: 'Wireframes, prototypes, and design systems your users will love.',
+      description:
+        'Research-informed design: user flows, wireframes, high-fidelity prototypes, and a token-based design system your engineers can implement directly. Design review happens right in the platform.',
+      icon: '🎨',
+      startingPrice: 3500,
+      timelineWeeks: 4,
+      includes: ['User flows & wireframes', 'High-fidelity prototypes', 'Design system & tokens', 'Exported dev-ready assets'],
+      sortOrder: 2,
+    },
+    {
+      slug: 'backend-api-development',
+      serviceLine: 'BACKEND_API_DEVELOPMENT',
+      name: 'Backend / API Development',
+      summary: 'Robust APIs, integrations, and data pipelines.',
+      description:
+        'REST and event-driven services with authentication, rate limiting, observability, and documentation baked in. Integrations with payment, CRM, and AI providers handled end-to-end.',
+      icon: '⚙️',
+      startingPrice: 8000,
+      timelineWeeks: 8,
+      includes: ['API design & OpenAPI spec', 'Implementation + tests', 'Integration with 3rd parties', 'Deployed service + docs'],
+      sortOrder: 3,
+    },
+    {
+      slug: 'mobile-app-development',
+      serviceLine: 'MOBILE_APP_DEVELOPMENT',
+      name: 'Mobile App Development',
+      summary: 'iOS, Android, and cross-platform apps shipped to the stores.',
+      description:
+        'Cross-platform (React Native/Flutter) or native apps, from prototype to store listing. Includes push notifications, offline strategy, and release automation.',
+      icon: '📱',
+      startingPrice: 12000,
+      timelineWeeks: 10,
+      includes: ['App architecture', 'iOS + Android builds', 'Store listing support', 'Crash & performance monitoring'],
+      sortOrder: 4,
+    },
+    {
+      slug: 'managed-monitoring',
+      serviceLine: 'MANAGED_MONITORING',
+      name: 'Managed Monitoring',
+      summary: '24/7 uptime, performance, and security monitoring with AI anomaly detection.',
+      description:
+        'We watch your product so you don\u2019t have to: uptime probes, response-time and error-rate tracking, AI-flagged anomalies, alert routing, and a monthly health report in plain language.',
+      icon: '📡',
+      startingPrice: 499,
+      timelineWeeks: 1,
+      includes: ['Uptime + performance probes', 'AI anomaly detection', 'Alert routing (Slack/email/PagerDuty)', 'Monthly health report'],
+      isMostRequested: true,
+      sortOrder: 5,
+    },
+    {
+      slug: 'automation-engineering',
+      serviceLine: 'AUTOMATION_ENGINEERING',
+      name: 'Automation Engineering',
+      summary: 'CI/CD, workflow automation, and runbooks that remove toil.',
+      description:
+        'Pipelines, scheduled jobs, and trigger→condition→action runbooks for your operations. Auto-scaling, auto-restarts, scheduled reports — configurable from the dashboard, no YAML required.',
+      icon: '🤖',
+      startingPrice: 899,
+      timelineWeeks: 3,
+      includes: ['CI/CD pipeline setup', 'Runbook design & guardrails', 'Scheduled reports & alerts', 'Chatbot / webhook automation'],
+      sortOrder: 6,
+    },
+    {
+      slug: 'ai-integration',
+      serviceLine: 'AI_INTEGRATION',
+      name: 'AI Integration',
+      summary: 'Chatbots, recommendations, and intelligent automation embedded in your product.',
+      description:
+        'Provider-agnostic AI features: support chatbots, recommendation engines, anomaly detection, and code-assist tooling — with evaluation baselines, cost budgets, and human-approval flows built in.',
+      icon: '🧠',
+      startingPrice: 10000,
+      timelineWeeks: 6,
+      includes: ['Use-case scoping & eval set', 'Model integration (any provider)', 'Guardrails & approval flows', 'Cost budgets & monitoring'],
+      sortOrder: 7,
+    },
+    {
+      slug: 'maintenance-retainer',
+      serviceLine: 'MAINTENANCE_RETAINER',
+      name: 'Maintenance Retainer',
+      summary: 'Ongoing care: bug fixes, upgrades, and improvements on subscription.',
+      description:
+        'A dedicated ticket queue with defined response SLAs: bug fixes, dependency upgrades, minor features, and security patches — tracked and reported through the platform.',
+      icon: '🛠️',
+      startingPrice: 1999,
+      timelineWeeks: 1,
+      includes: ['Ticket-based delivery', 'Dependency & security updates', 'Response-time SLA', 'Monthly activity report'],
+      sortOrder: 8,
+    },
+  ];
+
+  const statusPipeline = ['REQUESTED', 'SCOPED', 'IN_DESIGN', 'IN_DEVELOPMENT', 'IN_QA', 'STAGED', 'LAUNCHED', 'MONITORED'];
+  for (const svc of serviceCatalog) {
+    await prisma.serviceLineCatalog.upsert({
+      where: { slug: svc.slug },
+      update: {
+        summary: svc.summary,
+        description: svc.description,
+        startingPrice: svc.startingPrice,
+        isMostRequested: svc.isMostRequested ?? false,
+        sortOrder: svc.sortOrder,
+      },
+      create: {
+        slug: svc.slug,
+        serviceLine: svc.serviceLine as never,
+        name: svc.name,
+        summary: svc.summary,
+        description: svc.description,
+        icon: svc.icon,
+        startingPrice: svc.startingPrice,
+        timelineWeeks: svc.timelineWeeks,
+        includes: svc.includes as never,
+        statusPipeline: statusPipeline as never,
+        isMostRequested: svc.isMostRequested ?? false,
+        sortOrder: svc.sortOrder,
+      },
+    });
+  }
+
   // ------------------------------------------------------------ pricing plans
   const planDefs = [
     { serviceLine: 'WEB_APP_DEVELOPMENT', name: 'Web App Development', description: 'Custom web apps, portals, marketing sites. Milestone-based.', pricingModel: 'MILESTONE', basePrice: 12000 },

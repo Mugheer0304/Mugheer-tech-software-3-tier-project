@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { BillingService } from './billing.service';
+import { renderInvoice } from './invoice-template';
 import { Roles, Public } from '../../common/decorators/roles.decorator';
 import { InternalServiceGuard } from '../../common/guards/internal-service.guard';
 
@@ -26,6 +28,30 @@ export class BillingController {
   @Get('invoices/:id')
   getInvoice(@Req() req: AuthedRequest, @Param('id') id: string) {
     return this.billing.getInvoice(req.user, id);
+  }
+
+  /**
+   * Downloadable invoice document (PDF via print / plain-text fallback).
+   * Carries Mugheer-Tech name, email and phone on every invoice
+   * (spec Section 27 — contact details wired into the template, not just docs).
+   */
+  @Get('invoices/:id/download')
+  @Header('Content-Type', 'text/plain; charset=utf-8')
+  async downloadInvoice(@Req() req: AuthedRequest, @Param('id') id: string, @Res() res: Response) {
+    const invoice = await this.billing.getInvoice(req.user, id);
+    const doc = renderInvoice({
+      number: invoice.number,
+      orgName: invoice.organization.name,
+      amount: invoice.amount,
+      taxAmount: invoice.taxAmount,
+      currency: invoice.currency,
+      status: invoice.status,
+      dueDate: invoice.dueDate,
+      paidAt: invoice.paidAt,
+      lineItems: (invoice.lineItems as { description: string; quantity: number; unitPrice: number }[]) ?? undefined,
+    });
+    res.setHeader('Content-Disposition', `attachment; filename="${invoice.number}.txt"`);
+    res.send(doc);
   }
 
   @Post('invoices')

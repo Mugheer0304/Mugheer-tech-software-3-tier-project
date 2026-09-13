@@ -3,9 +3,10 @@ FROM node:20-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
-# Reuse backend-core Prisma schema for the generated client
+# Copy the schema BEFORE generate, and DO NOT swallow generate failures —
+# a missing Prisma client only shows up as a runtime crash otherwise.
 COPY prisma ./prisma
-RUN npx prisma generate || echo "prisma generate skipped (no schema)"
+RUN npx prisma generate
 COPY . .
 RUN npm run build
 

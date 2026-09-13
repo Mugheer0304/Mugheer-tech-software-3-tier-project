@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../../common/prisma.service';
 import { config } from '../../common/config';
+import { COMPANY } from '../../common/company';
 
 export interface NotificationInput {
   type: 'alert' | 'invoice' | 'ticket' | 'project' | 'system';
@@ -54,9 +55,10 @@ export class NotificationsService {
       if (recipients.length === 0) return;
       await this.transporter?.sendMail({
         from: config.smtp.from,
+        replyTo: COMPANY.email, // escalation contact on every notification email (spec Section 27)
         to: recipients.join(', '),
         subject: `[Mugheer] ${input.title}`,
-        text: input.body,
+        text: `${input.body}\n\n— ${COMPANY.name}\n${COMPANY.email} · ${COMPANY.phone}`,
       });
     } catch (err) {
       this.logger.warn(`SMTP send failed: ${String(err)}`);

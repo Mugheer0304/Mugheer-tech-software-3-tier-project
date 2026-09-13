@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth.store';
 const NAV = [
   { to: '/dashboard', label: 'Console', end: true },
   { to: '/admin/products', label: 'Products' },
+  { to: '/admin/services', label: 'Service Catalog' },
   { to: '/tickets', label: 'Tickets' },
   { to: '/automation', label: 'Runbooks' },
   { to: '/admin/billing', label: 'Billing' },

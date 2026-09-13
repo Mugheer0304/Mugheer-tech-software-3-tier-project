@@ -1,22 +1,19 @@
 import { Link } from 'react-router-dom';
-
-const SERVICES = [
-  { name: 'Website / Web App Development', desc: 'Custom sites, portals, and web applications built end-to-end.' },
-  { name: 'Product Design (UI/UX)', desc: 'Wireframes, prototypes, and design systems your users will love.' },
-  { name: 'Backend / API Development', desc: 'Robust APIs, integrations, and data pipelines.' },
-  { name: 'Mobile App Development', desc: 'iOS, Android, and cross-platform apps shipped to the stores.' },
-  { name: 'Managed Monitoring', desc: '24/7 uptime, performance, and security monitoring with AI anomaly detection.' },
-  { name: 'Automation Engineering', desc: 'CI/CD, workflow automation, and runbooks that remove toil.' },
-  { name: 'AI Integration', desc: 'Chatbots, recommendations, and intelligent automation embedded in your product.' },
-  { name: 'Maintenance Retainer', desc: 'Ongoing care: bug fixes, upgrades, and improvements on subscription.' },
-];
+import { ServiceBox } from '../../components/ui/ServiceBox';
+import { useServiceCatalog } from '../services/useServiceCatalog';
+import { COMPANY } from '../../lib/company';
 
 export function Landing() {
+  const { data: services } = useServiceCatalog();
+
   return (
     <div className="min-h-screen bg-white">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-2xl font-bold text-brand-700">Mugheer</span>
+        <span className="text-2xl font-bold text-brand-700">{COMPANY.name}</span>
         <nav className="flex items-center gap-3">
+          <Link to="/contact" className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+            Contact
+          </Link>
           <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
             Log in
           </Link>
@@ -31,7 +28,7 @@ export function Landing() {
 
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-14 text-center">
         <h1 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
-          Build. Monitor. Automate. <span className="text-brand-600">Everything, in one place.</span>
+          Build. Monitor. Automate. <span className="text-brand-600">Everything, connected.</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-600">
           Mugheer is the software house platform that lets you request products, watch them get built,
@@ -53,15 +50,17 @@ export function Landing() {
         </div>
       </section>
 
-      <section className="border-t border-slate-100 bg-slate-50 py-16">
+      {/* Service Boxes — rendered from the service_lines table, never hardcoded (spec 4.1) */}
+      <section id="services" className="border-t border-slate-100 bg-slate-50 py-16">
         <div className="mx-auto max-w-6xl px-6">
           <h2 className="text-center text-2xl font-bold text-slate-900">What we do</h2>
+          <p className="mx-auto mt-2 max-w-xl text-center text-sm text-slate-600">
+            Click any service to see what's included, typical timelines, and to request it — the form comes
+            pre-filled with that service line.
+          </p>
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {SERVICES.map((s) => (
-              <div key={s.name} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="font-semibold text-slate-800">{s.name}</h3>
-                <p className="mt-2 text-sm text-slate-600">{s.desc}</p>
-              </div>
+            {(services ?? []).map((s) => (
+              <ServiceBox key={s.slug} service={s} context="public" />
             ))}
           </div>
         </div>
@@ -82,8 +81,27 @@ export function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-100 py-8 text-center text-sm text-slate-500">
-        © {new Date().getFullYear()} Mugheer. All rights reserved.
+      {/* Public marketing footer — company contact details per spec Section 27 */}
+      <footer className="border-t border-slate-100 bg-slate-50 py-10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-6 text-center text-sm text-slate-500">
+          <span className="text-base font-bold text-brand-700">{COMPANY.name}</span>
+          <span>{COMPANY.tagline}</span>
+          <span>
+            <a href={`mailto:${COMPANY.email}`} className="text-brand-600 hover:underline">
+              {COMPANY.email}
+            </a>
+            {' · '}
+            <a href={`tel:${COMPANY.phone.replace(/\s/g, '')}`} className="text-brand-600 hover:underline">
+              {COMPANY.phone}
+            </a>
+          </span>
+          <span>
+            <Link to="/contact" className="text-brand-600 hover:underline">
+              Contact us
+            </Link>
+          </span>
+          <span>© {new Date().getFullYear()} {COMPANY.name}. All rights reserved.</span>
+        </div>
       </footer>
     </div>
   );

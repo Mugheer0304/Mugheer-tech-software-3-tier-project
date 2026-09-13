@@ -1,6 +1,6 @@
-# scripts — Operations Scripts
+# scripts — Operations & CI Scripts
 
-**What these do:** the three scripts every environment depends on — seeding demo data, backing up the database, and the post-deploy smoke gate used by the CD pipelines. All are idempotent and safe to re-run (except `backup-db.sh`, which creates a new file each run — that's the point).
+**What these do:** operations utilities (seed, backup, smoke gate) **plus the shared CI/CD logic** that both GitHub Actions and Jenkins execute — the single implementation of "build", "test" and "deploy" for this platform (spec Sections 7.5 and 20.4).
 
 ## Files
 
@@ -9,6 +9,9 @@
 | `seed-db.sh` | Runs Prisma migrations + the demo-data seed (internal staff, Acme Corp client, product, runbooks, 48h of metrics, sample ticket + invoice). Idempotent — safe on every `docker compose up`. |
 | `backup-db.sh` | `pg_dump` → gzip → upload to `s3://$BACKUP_BUCKET/db/` with SSE. Used manually and by cron/automation; retention handled by the bucket lifecycle policy (365 days). |
 | `smoke-test.sh` | The **CD gate**: health, readiness (DB), OpenAPI docs, bad-login rejection, protected-route 401, plus optional authenticated checks (projects list, RBAC denial) when `SMOKE_TOKEN` is set. Exits non-zero on any failure — that's what stops a bad deploy. |
+| `build.sh` | **Shared CI build** — called by GitHub Actions *and* Jenkins. `build.sh [all\|backend\|frontend\|worker\|images]`; `images` mode builds all 7 container images and pushes them when `REGISTRY` is set. |
+| `test.sh` | **Shared CI tests** — `test.sh [unit\|integration\|ai\|all]`. Same gates on both CI vendors: backend unit, frontend build+test, worker, integration (real Postgres/Redis), AI evaluation suites. |
+| `deploy.sh` | **Shared CI deploy** — `deploy.sh [staging\|production]`. Terraform plan → kubectl apply overlay → pinned image tags → rollout gates → smoke-test gate, with automatic `rollout undo` on failure. This is the *only* path by which code reaches staging/production, regardless of which CI vendor triggered it. |
 
 ## How to run each
 
@@ -16,6 +19,12 @@
 # 1. Seed (from repo root; needs backend-core deps + a running Postgres)
 ./scripts/seed-db.sh
 # Demo logins are printed when it finishes (see root README table).
+
+# 1b. Shared CI scripts (what the pipelines run)
+./scripts/build.sh all            # build backend, frontend, worker packages
+REGISTRY="123456.dkr.ecr.us-east-1.amazonaws.com" IMAGE_TAG=staging ./scripts/build.sh images
+./scripts/test.sh unit            # same gates as CI's 'Lint & Test' stage
+./scripts/deploy.sh staging       # what cd-staging.yml / Jenkins 'Deploy Staging' run
 
 # 2. Backup (needs: pg_dump client, AWS CLI, DATABASE_URL, BACKUP_BUCKET or default naming)
 DATABASE_URL="postgresql://user:pass@host:5432/mugheer" \
@@ -34,6 +43,10 @@ SMOKE_TOKEN="<jwt-of-seeded-client-user>" ./scripts/smoke-test.sh https://api.mu
 ```
 
 ## How to work on them
+
+### Editing the shared CI logic
+
+`build.sh`, `test.sh` and `deploy.sh` are the **single source of truth** — GitHub Actions workflows and the `jenkins/Jenkinsfile` both shell into them. Never inline deploy logic in a workflow; change the script and both CI systems pick it up. Any behavior change must keep both callers working (no vendor-specific flags inside the scripts; vendor differences live in the caller via env vars like `REGISTRY` / `IMAGE_TAG`).
 
 ### Adding a smoke check — step by step
 1. Copy the `check "name" "$API/..." "200"` pattern (extra args are passed to curl, e.g. `-H`, `-d`).

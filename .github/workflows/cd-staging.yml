@@ -22,22 +22,12 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
 
-      - name: Build & push images
-        run: |
-          REG="${{ steps.ecr.outputs.registry }}"
-          for svc in backend-core frontend worker; do
-            docker build -t "$REG/mugheer-$svc:staging" ./$svc
-            docker push "$REG/mugheer-$svc:staging"
-          done
-          declare -A ports=( [anomaly-detection]=ai-anomaly [support-triage]=ai-triage [scoping-assistant]=ai-scoping [code-assist]=ai-codeassist )
-          for dir in "${!ports[@]}"; do
-            docker build -t "$REG/mugheer-${ports[$dir]}:staging" ./ai-services/$dir
-            docker push "$REG/mugheer-${ports[$dir]}:staging"
-          done
-          # worker image needs the backend Prisma schema to generate its client
-          cp backend-core/prisma/schema.prisma worker/prisma/schema.prisma
-          docker build -t "$REG/mugheer-worker:staging" ./worker
-          docker push "$REG/mugheer-worker:staging"
+      # Shared build logic — the exact same script Jenkins runs (spec 20.4).
+      - name: Build & push images (shared script)
+        run: ./scripts/build.sh images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: staging
 
       - name: Terraform plan (staging)
         working-directory: terraform/environments/staging
@@ -45,11 +35,10 @@ jobs:
           terraform init -input=false
           terraform plan -input=false -no-color
 
-      - name: Deploy to staging namespace
-        run: |
-          aws eks update-kubeconfig --name mugheer-staging
-          kubectl apply -k k8s/overlays/staging
-          kubectl rollout status deployment/backend-core -n mugheer-staging --timeout=180s
-
-      - name: Smoke tests
-        run: ./scripts/smoke-test.sh https://api.staging.mugheer.com
+      # Shared deploy logic: kubectl apply + rollout gates + smoke tests,
+      # identical to the Jenkins 'Deploy Staging' stage.
+      - name: Deploy to staging namespace (shared script)
+        run: ./scripts/deploy.sh staging
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: staging

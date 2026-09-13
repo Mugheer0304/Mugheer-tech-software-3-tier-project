@@ -13,18 +13,20 @@ Mugheer is a production-grade, three-tier, AI-augmented software house platform:
 1. [Purpose](#1-purpose)
 2. [Architecture overview](#2-architecture-overview)
 3. [Tech stack](#3-tech-stack)
-4. [Quick start — run everything with Docker Compose](#4-quick-start--run-everything-with-docker-compose)
-5. [Environment variables](#5-environment-variables)
-6. [Running tests](#6-running-tests)
-7. [Deployment](#7-deployment)
-8. [CI/CD pipelines](#8-cicd-pipelines)
-9. [Infrastructure — Terraform](#9-infrastructure--terraform)
-10. [Kubernetes — run with kubectl/kustomize](#10-kubernetes--run-with-kubectlkustomize)
-11. [Monitoring & alerts](#11-monitoring--alerts)
-12. [AI systems](#12-ai-systems)
-13. [Security](#13-security)
-14. [Contributing](#14-contributing)
-15. [License & contact](#15-license--contact)
+4. [Repository map — every directory & file explained](#4-repository-map--every-directory--file-explained)
+5. [Quick start — run everything with Docker Compose](#5-quick-start--run-everything-with-docker-compose)
+6. [Environment variables](#6-environment-variables)
+7. [Running tests](#7-running-tests)
+8. [Deployment](#8-deployment)
+9. [CI/CD pipelines](#9-cicd-pipelines)
+10. [Infrastructure — Terraform](#10-infrastructure--terraform)
+11. [Kubernetes — run with kubectl/kustomize](#11-kubernetes--run-with-kubectlkustomize)
+12. [Monitoring & alerts — how to use it](#12-monitoring--alerts--how-to-use-it)
+13. [AI systems](#13-ai-systems)
+14. [Security](#14-security)
+15. [Repository tooling — all.sh, git-auto, loadtest.js](#15-repository-tooling--allsh-git-auto-loadtestjs)
+16. [Contributing](#16-contributing)
+17. [License & contact](#17-license--contact)
 
 ---
 
@@ -82,11 +84,63 @@ Full details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | Infra | Docker + Compose, Kubernetes (kustomize overlays), Terraform (EKS + EC2 node groups, RDS Multi-AZ, S3), GitHub Actions |
 | Monitoring | Prometheus, Alertmanager, Grafana, structured JSON logs with correlation IDs |
 
-## 4. Quick start — run everything with Docker Compose
+## 4. Repository map — every directory & file explained
 
-The fastest way to see the whole platform running. One command brings up **every** service: PostgreSQL, Redis, Mailhog, MinIO, all app services, all 4 AI microservices, and the full monitoring stack (Prometheus, Grafana, Alertmanager).
+Everything lives in its own folder with a README where it helps. Here is what each piece is and where its docs are:
 
-**Prerequisites:** Docker Engine 24+ with the Compose v2 plugin (`docker compose version` should work). On a fresh Ubuntu EC2 box, [`all.sh`](all.sh) installs this for you (see [Toolchain installer](#toolchain-installer-allsh)).
+```
+Mugheer-tech-software-3-tier-project/
+├── README.md                  ← you are here: run everything
+├── MUGHEER-SPEC.md            ← the full product/engineering brief (source of truth)
+├── docker-compose.yml         ← local dev stack (Postgres, Redis, app, AI, monitoring)
+├── .env.example               ← every environment variable, documented
+├── all.sh                     ← one-shot DevOps toolchain installer for a fresh Ubuntu EC2 box
+├── git-auto                   ← repo bootstrap script (recreates scaffold, commits, pushes)
+├── loadtest.js                ← standalone k6 load test (ramp to 20k VUs; edit TARGET_URL)
+├── LICENSE                    ← MIT
+│
+├── frontend/                  ← Tier 1: React 18 + Vite SPA (client + internal dashboards)
+├── backend-core/              ← Tier 2: NestJS modular monolith (REST API v1, Swagger, WS)
+│   └── prisma/                ← schema, migrations, seed.ts (demo users/orgs)
+├── worker/                    ← BullMQ background jobs (probes, scans, reports, dunning)
+├── ai-services/               ← Tier 2.5: four FastAI microservices (see §13)
+│   ├── anomaly-detection/     ←   :8101 robust-z + EWMA + IsolationForest
+│   ├── support-triage/        ←   :8102 classify + draft replies (human-approved)
+│   ├── scoping-assistant/     ←   :8103 free text → structured brief
+│   └── code-assist/           ←   :8104 RAG code assistant (internal only)
+│
+├── k8s/                       ← Kubernetes manifests (see §11) — k8s/README.md
+│   ├── base/                  ←   deployments, services, ingress, HPA, NetworkPolicy
+│   └── overlays/              ←   staging/ and production/ kustomize overlays
+├── terraform/                 ← AWS IaC (see §10) — terraform/README.md
+│   ├── modules/               ←   network, compute (EKS), database (RDS), storage, iam
+│   └── environments/          ←   staging/ and production/ compositions
+├── .github/workflows/         ← CI/CD (see §9): ci.yml, cd-staging.yml, cd-production.yml
+├── jenkins/Jenkinsfile        ← the same pipeline on Jenkins (dual-track CI, see §9)
+│
+├── monitoring/                ← Prometheus + Alertmanager + Grafana (see §12) — monitoring/README.md
+│   ├── prometheus/            ←   prometheus.yml (scrape config) + alerts.yml (alert rules)
+│   ├── alertmanager/          ←   alertmanager.yml (routing: critical/warning/info)
+│   └── grafana/               ←   provisioning/ + dashboards/product-overview.json
+│
+├── scripts/                   ← shared ops scripts — scripts/README.md
+│   ├── build.sh               ←   build backend/frontend/worker/images (used by BOTH CI vendors)
+│   ├── test.sh                ←   unit | integration | ai | all test gates (same on GH + Jenkins)
+│   ├── deploy.sh              ←   the ONLY path to staging/production (kubectl + gates + rollback)
+│   ├── smoke-test.sh          ←   post-deploy health gate (CD fails if this fails)
+│   ├── seed-db.sh             ←   migrate + seed the database
+│   └── backup-db.sh           ←   pg_dump backup helper
+│
+├── e2e/                       ← Playwright end-to-end journeys (client + internal)
+│   └── load/                  ← k6 load test for the monitoring-ingest endpoint
+└── docs/                      ← ARCHITECTURE, API, RUNBOOK, INTEGRATION, SECURITY
+```
+
+## 5. Quick start — run everything with Docker Compose
+
+The fastest way to see the platform running. The compose file uses **profiles** so you only run what you need — the default brings up the minimal dev stack, and you opt into the rest.
+
+**Prerequisites:** Docker Engine 24+ with the Compose v2 plugin (`docker compose version` should work). On a fresh Ubuntu EC2 box, [`all.sh`](all.sh) installs this for you (see [§15](#15-repository-tooling--allsh-git-auto-loadtestjs)).
 
 ### Step 1 — Configure the environment
 
@@ -94,18 +148,42 @@ The fastest way to see the whole platform running. One command brings up **every
 cp .env.example .env                # fill in what you have; everything runs with sane local defaults
 ```
 
-### Step 2 — Build and start the stack
+### Step 2 — Pick your stack size and start it
 
 ```bash
-docker compose up --build -d        # builds all images, starts postgres, redis, mailhog, minio,
-                                    # backend-core, worker, frontend, 4 AI services,
-                                    # prometheus, grafana, alertmanager
+# Minimal dev stack (default): postgres + redis + backend-core only
+docker compose up --build -d
+
+# Add the full application: worker + frontend
+docker compose --profile app up --build -d
+
+# Add email + object storage tooling: mailhog + minio
+docker compose --profile tools up -d
+
+# Add the 4 AI microservices
+docker compose --profile ai up --build -d
+
+# Add the monitoring stack: prometheus + grafana + alertmanager
+docker compose --profile monitoring up -d
+
+# ── OR: everything at once ──
+docker compose --profile app --profile tools --profile ai --profile monitoring up --build -d
 ```
+
+Profile cheat sheet:
+
+| Profile | Services it starts |
+|---|---|
+| *(default)* | `postgres`, `redis`, `backend-core` |
+| `app` | + `worker`, `frontend` |
+| `tools` | + `mailhog` (email), `minio` (S3-compatible storage) |
+| `ai` | + `ai-anomaly` (:8101), `ai-triage` (:8102), `ai-scoping` (:8103), `ai-codeassist` (:8104) |
+| `monitoring` | + `prometheus` (:9090), `grafana` (:3001), `alertmanager` (:9093) |
 
 Useful variations:
 
 ```bash
-docker compose up -d                # skip rebuilds (reuses existing images)
+docker compose --profile app up -d  # skip rebuilds (reuses existing images)
 docker compose up -d postgres redis # start only what you need for backend dev
 docker compose logs -f backend-core # follow a service's logs
 docker compose ps                   # see what's running and healthy
@@ -130,7 +208,7 @@ docker compose exec backend-core npx prisma db seed
 | API | http://localhost:3000/api/v1 |
 | **API docs (Swagger)** | http://localhost:3000/api/docs |
 | Mailhog (emails) | http://localhost:8025 |
-| MinIO console | http://localhost:9001 |
+| MinIO console | http://localhost:9001 (`mugheer` / `mugheer-secret`) |
 | Grafana | http://localhost:3001 (admin/admin) |
 | Prometheus | http://localhost:9090 |
 | Alertmanager | http://localhost:9093 |
@@ -163,7 +241,7 @@ docker compose exec postgres psql -U mugheer mugheer # psql shell
 docker compose build frontend && docker compose up -d frontend   # rebuild one service after code changes
 ```
 
-## 5. Environment variables
+## 6. Environment variables
 
 All variables live in [`.env.example`](.env.example). Production values come from AWS Secrets Manager (never committed). Required in production:
 
@@ -182,7 +260,7 @@ All variables live in [`.env.example`](.env.example). Production values come fro
 | `AI_*` | AI service URLs, model, monthly budget cap |
 | `VITE_API_URL`, `VITE_WS_URL` | Frontend build-time API/WS endpoints |
 
-## 6. Running tests
+## 7. Running tests
 
 The project has a **three-tier testing strategy** mirroring the spec (Section 21). All suites are green at time of writing; exact commands:
 
@@ -190,6 +268,12 @@ The project has a **three-tier testing strategy** mirroring the spec (Section 21
 # ---- Backend unit tests (fast, no external services) ----
 cd backend-core
 npm run test:unit                       # 13 tests: auth primitives, RBAC guard, metric math
+
+# ---- Integration verification suite (spec Sections 7 + 24 contracts) ----
+npm run test:verify                     # walks every Prisma table → owning module,
+                                        # every frontend feature → backend module,
+                                        # Service Box data-driven rendering, contact
+                                        # details on every required surface
 
 # ---- Backend integration tests (REAL Postgres + Redis, full HTTP round-trips) ----
 docker compose up -d postgres redis     # or CI spins up service containers
@@ -223,15 +307,45 @@ SMOKE_TOKEN="<jwt>" ./scripts/smoke-test.sh http://localhost:3000   # + authed c
 
 **AI governance tests are part of CI:** triage accuracy has a required minimum (80% on the fixed eval set), and anomaly detection has a false-positive ceiling on clean data. These run whenever prompts/models change.
 
-## 7. Deployment
+**End-to-end journeys (Playwright, against the running compose stack):**
+
+```bash
+cd e2e && npm install && npx playwright install chromium
+docker compose --profile app up -d --build && docker compose exec backend-core npx prisma migrate deploy && docker compose exec backend-core npx prisma db seed
+npm test                                # signup → Service Box → request product → contact form →
+                                        # company contact details visible (spec Section 23)
+```
+
+**Load testing (k6):**
+
+```bash
+# Platform-specific ingest/dashboard load test (run before major releases):
+k6 run -e BASE_URL=http://localhost:3000/api/v1 -e TOKEN=<jwt> -e INTERNAL_TOKEN=<token> e2e/load/monitoring-ingest.js
+# thresholds: dashboard p95 < 300ms, ingest p95 < 500ms, error rate < 1%
+
+# Standalone site load test (root loadtest.js — edit TARGET_URL at the top first):
+k6 run loadtest.js
+# ramp: 0 → 8,000 VUs (2m) → 20,000 VUs (5m) → hold 20,000 (10m) → down (2m)
+# thresholds: p95 < 1s, error rate < 5%
+```
+
+**Run everything CI runs, in one command** (shared script used by both GitHub Actions and Jenkins):
+
+```bash
+./scripts/test.sh all      # unit + integration + AI evals
+./scripts/test.sh unit     # just the fast suites
+./scripts/test.sh ai       # just the AI evaluation suites
+```
+
+## 8. Deployment
 
 How the pieces fit together: **Terraform provisions the cloud**, **Kubernetes runs the workloads**, and **GitHub Actions automates both**. Each subsection below is copy-pasteable.
 
 | Pipeline | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | every PR / push | Typecheck, build, unit tests, **integration tests against real Postgres+Redis**, AI evaluation suites, Trivy scans |
-| `cd-staging.yml` | merge to `develop` | Build & push images (incl. worker with backend Prisma schema), Terraform plan, `kubectl apply -k k8s/overlays/staging`, rollout status, **smoke tests gate** |
-| `cd-production.yml` | tag `v*` (manual approval) | Terraform apply, deploy production overlay, health checks ×12, **automatic `kubectl rollout undo` on failure** |
+| `ci.yml` (GH) / Jenkins `Lint & Test` | every PR / push | Typecheck, build, unit tests, **integration tests against real Postgres+Redis**, **integration verification suite**, AI evaluation suites, Trivy scans |
+| `cd-staging.yml` (GH) / Jenkins `Deploy Staging` | merge to `develop` | Build & push images via `scripts/build.sh images`, Terraform plan, `scripts/deploy.sh staging` (kubectl apply + rollout gates + **smoke-test gate**) |
+| `cd-production.yml` (GH) / Jenkins `Deploy Production` | tag `v*` (manual approval in both systems) | Terraform apply, `scripts/deploy.sh production` with **automatic `kubectl rollout undo` on failed health checks** |
 
 **Rollback** (automatic in CD, manual here):
 
@@ -240,9 +354,9 @@ aws eks update-kubeconfig --name mugheer-production
 kubectl rollout undo deployment/backend-core -n mugheer-production
 ```
 
-## 8. CI/CD pipelines
+## 9. CI/CD pipelines — dual track (GitHub Actions **and** Jenkins)
 
-Workflows live in [`.github/workflows/`](.github/workflows/). They are triggered automatically — here is how to run and observe them.
+Workflows live in [`.github/workflows/`](.github/workflows/) and the Jenkins pipeline in [`jenkins/Jenkinsfile`](jenkins/Jenkinsfile). Both execute the **same integrated build-test-deploy sequence** by calling the same shared scripts — `scripts/build.sh`, `scripts/test.sh`, `scripts/deploy.sh` — so the two CI vendors can never drift apart on what "deploy" means (spec Sections 7.5 and 20.4). Either can run alone; running both gives redundancy.
 
 ### How a change flows from PR to production
 
@@ -257,7 +371,7 @@ git tag v1.2.3 ──▶ CD Production (cd-production.yml) ◀── manual appr
 You normally don't run anything; the pipeline runs on GitHub. To reproduce it locally:
 
 ```bash
-# The same checks CI performs, run by hand:
+# The same checks CI performs, run by hand (or just: ./scripts/test.sh unit):
 cd backend-core  && npm install && npx prisma generate && npx tsc -p tsconfig.build.json --noEmit \
                   && npm run build && npm run test:unit
 cd ../frontend   && npm install && npm run build && npm test
@@ -300,9 +414,25 @@ Then, in the GitHub UI, approve under **Actions → CD — Production → deploy
 | `AWS_DEPLOY_ROLE_ARN` | IAM role assumed via OIDC for ECR/EKS/Terraform (`id-token: write`) |
 | `production` environment | Must have **required reviewers** configured — that is the manual approval gate |
 
-## 9. Infrastructure — Terraform
+### Jenkins pipeline
 
-Terraform provisions everything in AWS: VPC + subnets, EKS cluster + node groups, RDS Postgres, S3, IAM. State lives in S3 with DynamoDB locking (configured in `terraform/environments/<env>/`).
+The declarative [`jenkins/Jenkinsfile`](jenkins/Jenkinsfile) mirrors the GitHub Actions stages stage-for-stage — Checkout → Lint & Test (parallel backend unit + AI evals) → Integration tests → Build & Scan (with Trivy) → Deploy Staging (branch `develop`) → Deploy Production (tag or `main`, gated by a Jenkins `input` approval step). It requires two credential bindings: `aws-deploy-creds` (AWS) and `container-registry-creds` (registry auth). On any failure it attempts automatic rollout undo before escalating — see the `post { failure }` block.
+
+## 10. Infrastructure — Terraform
+
+Terraform provisions everything in AWS: VPC + subnets, EKS cluster + node groups, RDS Postgres, S3, IAM. State lives in S3 with DynamoDB locking (configured in `terraform/environments/<env>/`). Step-by-step: [`terraform/README.md`](terraform/README.md).
+
+### One-time setup (per AWS account, before the first apply)
+
+```bash
+aws s3 mb s3://mugheer-terraform-state --region us-east-1
+aws s3api put-bucket-versioning --bucket mugheer-terraform-state --versioning-configuration Status=Enabled
+aws dynamodb create-table --table-name mugheer-terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST --region us-east-1
+aws sts get-caller-identity              # sanity check: you're authed as the right account
+```
 
 ### First-time setup (per environment)
 
@@ -320,6 +450,7 @@ terraform plan -out=tfplan            # preview and save a plan
 terraform apply tfplan                # apply exactly what was reviewed
 terraform output                      # cluster endpoint, ECR registry, RDS host, bucket names
 terraform destroy                     # ⚠ tears down everything — staging only, never in prod
+terraform fmt -recursive && terraform validate   # before committing infra changes
 ```
 
 ### After `apply`, point kubectl at the new cluster
@@ -331,7 +462,7 @@ kubectl get nodes                                     # node groups ready?
 
 **Modules:** `network` (VPC, public/private/DB subnets across ≥2 AZs, NAT), `compute` (EKS with EC2 node groups — Spot on staging, On-Demand in prod — per-tier security groups), `database` (RDS Postgres Multi-AZ, encrypted, deletion protection, credentials to Secrets Manager), `storage` (versioned S3 + lifecycle), `iam` (least-privilege). Kubernetes manifests live in `k8s/base` with `staging`/`production` kustomize overlays (probes, HPA, NetworkPolicies enforcing the three-tier rule).
 
-## 10. Kubernetes — run with kubectl/kustomize
+## 11. Kubernetes — run with kubectl/kustomize
 
 Manifests live in [`k8s/base`](k8s/base) with per-environment overlays in `k8s/overlays/{staging,production}`. You can run them **against any cluster** — EKS from Terraform, or a local cluster (minikube/kind) for experimentation. Deep-dive: [`k8s/README.md`](k8s/README.md).
 
@@ -388,6 +519,12 @@ kubectl apply -k k8s/overlays/production
 kubectl -n mugheer-production rollout status deployment/backend-core --timeout=180s
 ```
 
+Or let the shared deploy script do all of it (apply → pin image tag → rollout gates → smoke tests → auto-rollback):
+
+```bash
+REGISTRY=<ecr-registry> IMAGE_TAG=staging ./scripts/deploy.sh staging
+```
+
 ### Verify it's running
 
 ```bash
@@ -407,15 +544,48 @@ kubectl -n mugheer-staging logs deploy/backend-core --tail=100 -f
 
 **Rules of the road:** image tags are pinned per overlay (`latest` never appears); liveness probes never depend on the database; anything user-facing must be wired into `base/ingress.yaml` and monitoring ("no feature ships silent").
 
-## 11. Monitoring & alerts
+## 12. Monitoring & alerts — how to use it
 
-- **Dashboards:** Grafana → "Mugheer" folder (`monitoring/grafana/dashboards/`), provisioned automatically; per-product embeddable overview.
+The stack is Prometheus (metrics + alert rules) → Alertmanager (routing) → Grafana (dashboards). Everything is config-as-code under [`monitoring/`](monitoring/). Deep-dive: [`monitoring/README.md`](monitoring/README.md).
+
+### Using it day-to-day
+
+```bash
+docker compose --profile monitoring up -d        # start the stack (see §5)
+```
+
+| UI | URL | What to do there |
+|---|---|---|
+| **Grafana** | http://localhost:3001 (admin/admin) | Dashboards → **Mugheer** folder → **Product Overview** (response time, error rate, uptime, CPU per product via the product variable) |
+| **Prometheus** | http://localhost:9090 | Status → Targets: every scrape target should be `up == 1`. Run PromQL queries and test alert expressions here first |
+| **Alertmanager** | http://localhost:9093 | See which alerts are firing/pending/silenced and how they're routed |
+
 - **Alert routing** (`monitoring/alertmanager/alertmanager.yml`): critical → PagerDuty + `#mugheer-incidents`, warning → `#mugheer-alerts`, info → in-app only.
-- **Add an alert rule:** append to `monitoring/prometheus/alerts.yml` (expression, duration, severity, runbook link), then route the severity in Alertmanager. Restart with `docker compose restart prometheus alertmanager`.
-- **Platform health:** `GET /api/v1/health` (liveness), `GET /api/v1/health/ready` (readiness, checks DB).
+- **Platform health endpoints:** `GET /api/v1/health` (liveness), `GET /api/v1/health/ready` (readiness, checks DB).
 - Every request carries a `correlationId` (structured JSON logs) propagated through services and jobs.
+- **Client-product business metrics** don't go to Prometheus directly — they flow through the ingestion API (`POST /api/v1/monitoring/ingest`), which gives them retention policy and AI anomaly detection for free.
 
-## 12. AI systems
+### Add an alert rule — step by step
+
+1. Append to `monitoring/prometheus/alerts.yml`:
+   ```yaml
+   - alert: MyNewAlert
+     expr: <promql>            # test the expression in the Prometheus UI first
+     for: 5m                   # must hold this long before firing
+     labels: { severity: critical | warning | info }
+     annotations:
+       summary: "one line"
+       runbook: "link to docs/RUNBOOK.md section"
+   ```
+2. The `severity` label picks the Alertmanager route — only touch `alertmanager.yml` if it's genuinely new behavior.
+3. Secrets (Slack webhook, PagerDuty key) go in `/etc/alertmanager/secrets/` referenced by `*_file:` — **never inline**.
+4. `docker compose restart prometheus alertmanager`, then check http://localhost:9090/alerts — the new rule should appear as `inactive` (green), not immediately firing.
+
+### Add a Grafana dashboard
+
+Build it in the UI, then **JSON model → save the file** to `monitoring/grafana/dashboards/<name>.json` (dashboards-as-code — the provisioner auto-loads it; keep `uid` unique vs. `product-overview.json`).
+
+## 13. AI systems
 
 | Feature | What it does | Governance |
 |---|---|---|
@@ -425,15 +595,59 @@ kubectl -n mugheer-staging logs deploy/backend-core --tail=100 -f
 | **Code assist** (`:8104`, internal) | Retrieval-augmented suggestions scoped to the project's own codebase | Internal roles only |
 | **Report generator** | Weekly natural-language health summary per product | Stored as `AiInsight`, pushed to client + staff |
 
-**Governance (Section 12.3 of the spec):** every AI action is logged (`model`, `modelVersion`, input hash, confidence, human-approval status, token cost) and budget-capped (`AI_MONTHLY_BUDGET_USD`). Anything AI-generated shown in the UI carries a visible **"AI-suggested"** tag until approved. All AI calls degrade gracefully to heuristics when a service is down — the platform never blocks on AI. Evaluation baselines live in each service's `tests/` and run in CI.
+**Running them locally:** `docker compose --profile ai up --build -d` (or start a single one: `docker compose up -d ai-anomaly`). Each service exposes `/health`; the backend reaches them via `AI_ANOMALY_URL` / `AI_TRIAGE_URL` / `AI_SCOPING_URL` / `AI_CODEASSIST_URL` (pre-wired in compose).
 
-## 13. Security
+**Governance (Section 12.3 of the spec):** every AI action is logged (`model`, `modelVersion`, input hash, confidence, human-approval status, token cost) and budget-capped (`AI_MONTHLY_BUDGET_USD`). Anything AI-generated shown in the UI carries a visible **"AI-suggested"** tag until approved. All AI calls degrade gracefully to heuristics when a service is down — the platform never blocks on AI. Evaluation baselines live in each service's `tests/` and run in CI (minimum scores enforced — see §7).
+
+## 14. Security
 
 Full posture: [`docs/SECURITY.md`](docs/SECURITY.md). Highlights: bcrypt(12) + HaveIBeenPwned breach checks, rotating refresh tokens with family-reuse detection, TOTP 2FA, deny-by-default server-side RBAC with negative tests, tenant isolation on every query, signature-verified idempotent webhooks, append-only audit log with distinct AI-agent attribution, timing-safe internal service tokens, Trivy dependency/container scanning in CI.
 
 **Report a vulnerability:** security@mugheer.com (48h acknowledgment, coordinated disclosure — no public issues).
 
-## 14. Contributing
+## 15. Repository tooling — all.sh, git-auto, loadtest.js
+
+Three standalone helpers live at the repo root, next to the main codebase:
+
+### `all.sh` — one-shot DevOps toolchain installer (fresh Ubuntu EC2)
+
+Installs, from official upstream repos, always the latest versions: Docker Engine + Compose plugin (with the no-sudo group fix), Terraform, kubectl (tracks the latest stable K8s minor), AWS CLI v2, Eclipse Temurin LTS Java, Jenkins LTS, Node.js LTS (+ npm@latest), and the NestJS CLI.
+
+```bash
+chmod +x all.sh && ./all.sh
+# then log out/in (or `newgrp docker`) so docker works without sudo
+```
+
+After it finishes you have everything needed to run §5 (compose), §10 (terraform), §11 (kubectl), §9 (Jenkins) on that box.
+
+### `git-auto` — full repository bootstrap script
+
+Recreates the entire project scaffold from scratch, commits it in 12 logical conventional-commit stages, and pushes to GitHub. Useful for standing the repo up on a fresh machine (it never embeds credentials — authenticate with SSH, a PAT, or `gh auth login` first).
+
+```bash
+chmod +x git-auto
+./git-auto                    # clone-or-create + push to main
+./git-auto --dir myfolder     # custom local folder name
+./git-auto --branch develop   # push to a different branch
+./git-auto --no-push          # build + commit locally only
+./git-auto --force-push       # overwrite remote history (use with care)
+```
+
+If push is rejected as non-fast-forward (remote already has commits), the script prints the exact fix — either `--force-push` or a merge.
+
+### `loadtest.js` — standalone k6 load test
+
+A generic ramping load test for any site (up to 20,000 virtual users). **Edit `TARGET_URL` at the top** to point only at a system you own, then:
+
+```bash
+k6 run loadtest.js
+# stages: 2m → 8k VUs, 5m → 20k VUs, 10m hold, 2m ramp-down
+# thresholds: p95 < 1s, error rate < 5% (test fails if breached)
+```
+
+For platform-specific load testing (monitoring ingest + dashboard endpoints), use `e2e/load/monitoring-ingest.js` instead — see §7.
+
+## 16. Contributing
 
 - **Branches:** `feat/<scope>`, `fix/<scope>`, `chore/<scope>`; PRs target `develop`; releases tag `main`.
 - **PR checklist:** CI green (unit + integration + AI evals + scans) · docs updated · server-side RBAC for new routes with a negative test · K8s/Terraform updated if infra changed · monitoring wired for new user-facing services ("no feature ships silent").
@@ -443,20 +657,19 @@ Full posture: [`docs/SECURITY.md`](docs/SECURITY.md). Highlights: bcrypt(12) + H
 cd backend-core && npm run lint && npm run format
 ```
 
-## 15. License & contact
+## 17. License & contact
 
-MIT — see [`LICENSE`](LICENSE). Mugheer Engineering · engineering@mugheer.com
+MIT — see [`LICENSE`](LICENSE).
+
+**Mugheer-Tech** — Build. Monitor. Automate. Everything, connected.
+- Email: **mughammugheer@gmail.com**
+- Phone: **+92 304 0405194**
+
+These contact details are the single source of truth (`backend-core/src/common/company.ts` on the backend, `frontend/src/lib/company.ts` on the frontend) and are wired into the public footer, the Contact page, the client dashboard footer, and every generated invoice — not just documented here (spec Section 27).
+
+The integration contract and the automated Section 24 verification checklist live in [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
 
 ---
-
-### Toolchain installer (`all.sh`)
-
-Provisioning a fresh Ubuntu EC2 box? [`all.sh`](all.sh) installs the whole toolchain from official upstream repos — Docker + Compose (with the no-sudo group fix), Terraform, kubectl (tracking the latest stable K8s minor), AWS CLI v2, latest Temurin LTS Java, Jenkins LTS, Node LTS, NestJS CLI:
-
-```bash
-chmod +x all.sh && ./all.sh
-# then log out/in (or `newgrp docker`) so docker works without sudo
-```
 
 ### Operations quick reference
 
@@ -465,9 +678,12 @@ chmod +x all.sh && ./all.sh
 | Deploy / rollback / DB restore / incident playbooks | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) |
 | Endpoint reference | [`docs/API.md`](docs/API.md) + live Swagger at `/api/docs` |
 | Architecture deep-dive | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Cross-tier integration contract + checklist | [`docs/INTEGRATION.md`](docs/INTEGRATION.md) |
 | Security controls & disclosure | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | Kubernetes manifests deep-dive | [`k8s/README.md`](k8s/README.md) |
-| Operations scripts (seed / backup / smoke) | [`scripts/README.md`](scripts/README.md) |
+| Terraform / AWS infrastructure deep-dive | [`terraform/README.md`](terraform/README.md) |
+| Monitoring stack deep-dive (alerts, dashboards) | [`monitoring/README.md`](monitoring/README.md) |
+| Operations scripts (seed / backup / smoke / shared CI) | [`scripts/README.md`](scripts/README.md) |
 
 ### Documented assumptions
 

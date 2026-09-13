@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -72,6 +72,38 @@ export class ProjectsController {
   @Roles('SUPER_ADMIN', 'ADMIN', 'CLIENT_OWNER')
   reviewDesign(@Req() req: AuthedRequest, @Param('artifactId') artifactId: string, @Body() dto: { approve: boolean; feedback?: string }) {
     return this.projects.reviewDesign(principal(req.user), artifactId, dto.approve, dto.feedback);
+  }
+
+  // ------------------------------------------------------ collaboration
+  @Get(':id/comments')
+  listComments(@Req() req: AuthedRequest, @Param('id') productId: string) {
+    return this.projects.listComments(principal(req.user), productId);
+  }
+
+  @Post(':id/comments')
+  addComment(@Req() req: AuthedRequest, @Param('id') productId: string, @Body() dto: { body: string; designArtifactId?: string }) {
+    return this.projects.addComment(principal(req.user), productId, dto.body, dto.designArtifactId);
+  }
+
+  @Get('messages')
+  listMessages(@Req() req: AuthedRequest) {
+    return this.projects.listMessages(principal(req.user));
+  }
+
+  @Post('messages')
+  sendMessage(@Req() req: AuthedRequest, @Body() dto: { body: string }) {
+    return this.projects.sendMessage(principal(req.user), dto.body);
+  }
+
+  @Get('files')
+  listFiles(@Req() req: AuthedRequest, @Query('productId') productId?: string) {
+    return this.projects.listFiles(principal(req.user), productId);
+  }
+
+  @Post('files')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'ENGINEER', 'DESIGNER', 'CLIENT_OWNER')
+  addFile(@Req() req: AuthedRequest, @Body() dto: { productId?: string; name: string; fileUrl: string; sizeBytes: number; mimeType: string }) {
+    return this.projects.addFile(principal(req.user), dto);
   }
 
   // ----------------------------------------------------------- deployment

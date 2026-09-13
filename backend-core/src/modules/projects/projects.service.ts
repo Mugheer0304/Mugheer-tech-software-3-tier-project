@@ -177,6 +177,86 @@ export class ProjectsService {
     return updated;
   }
 
+  // ------------------------------------------------------ collaboration
+  // Comment threads per product (spec Section 3 item 6 — collaboration on the
+  // same org-scoped data; owns the Comment table via ProjectsModule).
+  async listComments(actor: { id: string; role: string; orgId?: string }, productId: string) {
+    // tenant check reuses product access rules
+    await this.getProduct(actor, productId);
+    return this.prisma.comment.findMany({
+      where: { productId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+      take: 100,
+    });
+  }
+
+  async addComment(actor: { id: string; role: string; orgId?: string }, productId: string, body: string, designArtifactId?: string) {
+    const product = await this.prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
+    if (!product) throw new NotFoundException('Product not found');
+    if (!['SUPER_ADMIN', 'ADMIN', 'ENGINEER', 'DESIGNER', 'SUPPORT'].includes(actor.role) && product.orgId !== actor.orgId) {
+      throw new ForbiddenException('Access denied to this product');
+    }
+    const comment = await this.prisma.comment.create({
+      data: { productId, authorId: actor.id, body, designArtifactId },
+      include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+    await this.audit.log({ actorType: 'USER', actorId: actor.id, orgId: product.orgId, action: 'comment.created', target: `product:${productId}` });
+    return comment;
+  }
+
+  // Org-level team chat (owns the Message table via ProjectsModule).
+  async listMessages(actor: { id: string; role: string; orgId?: string }) {
+    if (!actor.orgId) return [];
+    return this.prisma.message.findMany({
+      where: { orgId: actor.orgId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, name: true } } },
+      take: 100,
+    });
+  }
+
+  async sendMessage(actor: { id: string; role: string; orgId?: string }, body: string) {
+    if (!actor.orgId) throw new BadRequestException('No organization in session');
+    const message = await this.prisma.message.create({
+      data: { orgId: actor.orgId, authorId: actor.id, body },
+      include: { author: { select: { id: true, name: true } } },
+    });
+    return message;
+  }
+
+  // Shared project files (owns the ProjectFile table via ProjectsModule).
+  async listFiles(actor: { id: string; role: string; orgId?: string }, productId?: string) {
+    const where: Record<string, unknown> = {};
+    if (!['SUPER_ADMIN', 'ADMIN', 'ENGINEER', 'DESIGNER', 'SUPPORT'].includes(actor.role)) {
+      where.orgId = actor.orgId ?? '__none__';
+    }
+    if (productId) where.productId = productId;
+    return this.prisma.projectFile.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  }
+
+  async addFile(actor: { id: string; role: string; orgId?: string }, dto: { productId?: string; name: string; fileUrl: string; sizeBytes: number; mimeType: string }) {
+    const orgId = !['SUPER_ADMIN', 'ADMIN', 'ENGINEER', 'DESIGNER', 'SUPPORT'].includes(actor.role) ? actor.orgId ?? '' : actor.orgId ?? '';
+    if (!orgId) throw new BadRequestException('Organization required');
+    if (dto.productId) {
+      const product = await this.prisma.product.findFirst({ where: { id: dto.productId, deletedAt: null } });
+      if (!product) throw new NotFoundException('Product not found');
+    }
+    const file = await this.prisma.projectFile.create({
+      data: {
+        productId: dto.productId,
+        orgId,
+        name: dto.name,
+        fileUrl: dto.fileUrl,
+        sizeBytes: dto.sizeBytes,
+        mimeType: dto.mimeType,
+        uploadedById: actor.id,
+      },
+    });
+    await this.audit.log({ actorType: 'USER', actorId: actor.id, orgId, action: 'file.uploaded', target: `file:${file.id}` });
+    return file;
+  }
+
   // ---------------------------------------------------------- deployments
   async recordDeployment(orgId: string, productId: string, dto: { environment: string; commitSha: string; commitMsg?: string; triggeredBy?: string }) {
     return this.prisma.deployment.create({

@@ -53,6 +53,8 @@ async function bootstrap() {
     .addTag('tickets', 'Support tickets with AI triage drafts')
     .addTag('ai', 'AI scoping/code-assist + governance logs')
     .addTag('admin', 'Platform administration')
+    .addTag('service-catalog', 'Service Boxes (public catalog + admin management)')
+    .addTag('contact', 'Public contact form + internal lead review')
     .addTag('health', 'Liveness/readiness probes')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);

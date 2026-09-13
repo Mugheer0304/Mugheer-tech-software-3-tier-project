@@ -676,6 +676,53 @@ model UsageRecord {
 
 // ------------------------------ Webhooks -----------------------------------
 
+// ------------------------- Service catalog (Service Boxes) -----------------
+// Drives the "Service Box" UI pattern (spec Section 4.1): the marketing site,
+// client dashboard and admin console all render their service cards from this
+// single table — never from hardcoded frontend arrays.
+
+model ServiceLineCatalog {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  serviceLine    ServiceLine @unique // ties a box to the product/pricing enum
+  name           String
+  summary        String // one-liner shown on the box
+  description    String // full description shown in the detail view
+  icon           String   @default("🧩") // emoji or icon key
+  startingPrice  Float    @default(0)
+  currency       String   @default("USD")
+  includes       Json?    // ["what's included", ...]
+  timelineWeeks  Int?
+  statusPipeline Json?    // ["REQUESTED", "SCOPED", ...] client-visible timeline
+  isMostRequested Boolean @default(false)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@index([isActive])
+}
+
+// --------------------------- Contact / lead capture ------------------------
+// Captures inbound leads from the public Contact Us page (spec Section 27).
+// Owned by ContactModule; read by the internal admin console.
+
+model ContactRequest {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  phone       String?
+  company     String?
+  message     String
+  sourcePage  String   @default("contact") // which page submitted it
+  status      String   @default("new") // new | contacted | closed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
 model WebhookEvent {
   id          String   @id @default(cuid())
   source      String // stripe | github | monitoring

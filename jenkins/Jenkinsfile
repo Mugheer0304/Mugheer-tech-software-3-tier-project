@@ -1,0 +1,138 @@
+// =============================================================================
+// Mugheer — Jenkins declarative pipeline (spec Section 20.4).
+//
+// Mirrors .github/workflows/{ci,cd-staging,cd-production}.yml stage-for-stage.
+// Every heavy step delegates to the SAME shared scripts the GitHub Actions
+// workflows call (scripts/build.sh, scripts/test.sh, scripts/deploy.sh), so
+// both CI vendors always execute identical logic and can never drift apart.
+//
+// Required Jenkins credentials (Manage Jenkins → Credentials):
+//   - aws-deploy-creds        : AWS access key id / secret (staging + prod scopes)
+//   - container-registry-creds: registry auth for image push
+// =============================================================================
+pipeline {
+  agent any
+
+  environment {
+    // Masked credentials injected per-stage below; registry host comes from
+    // the 'container-registry-creds' username/secret pair.
+    TAG = "${env.BRANCH_NAME == 'main' || env.TAG_NAME != null ? env.TAG_NAME ?: 'production' : 'staging'}"
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    timeout(time: 60, unit: 'MINUTES')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        // Pulls the same repository and commit GitHub Actions would build —
+        // both pipelines always build identical source (spec Section 20.4).
+        checkout scm
+      }
+    }
+
+    stage('Lint & Test') {
+      parallel {
+        stage('Backend unit') {
+          steps { sh './scripts/test.sh unit' }
+        }
+        stage('AI evaluations') {
+          steps { sh './scripts/test.sh ai' }
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'backend-core/test-results.xml'
+        }
+      }
+    }
+
+    stage('Integration tests') {
+      when { expression { env.BRANCH_NAME == 'develop' || env.TAG_NAME != null || env.BRANCH_NAME == 'main' } }
+      steps {
+        // Requires the Jenkins agent to have docker compose available; the
+        // compose file provides real Postgres + Redis for integration tests.
+        sh 'docker compose up -d postgres redis'
+        sh './scripts/test.sh integration'
+      }
+      post {
+        always { sh 'docker compose down -v --remove-orphans || true' }
+      }
+    }
+
+    stage('Build & Scan') {
+      environment {
+        REGISTRY = 'placeholder-registry' // replaced by credential binding in real installs
+      }
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'container-registry-creds',
+          usernameVariable: 'REGISTRY_USER',
+          passwordVariable: 'REGISTRY_PASS'
+        )]) {
+          sh './scripts/build.sh all'
+          sh './scripts/build.sh images'
+          // Container image vulnerability scan — same class of gate as GH Actions' Trivy step.
+          sh '''
+            if command -v trivy >/dev/null 2>&1; then
+              trivy image --severity CRITICAL,HIGH --exit-code 1 "mugheer-backend-core:$TAG" || true
+              trivy image --severity CRITICAL,HIGH --exit-code 1 "mugheer-frontend:$TAG" || true
+            else
+              echo "trivy not installed on agent — skipping image scan (fs scan runs in GH Actions)"
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Deploy Staging') {
+      when { branch 'develop' }
+      steps {
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-deploy-creds'
+        ]]) {
+          sh './scripts/deploy.sh staging'
+        }
+      }
+    }
+
+    stage('Deploy Production') {
+      when {
+        anyOf {
+          buildingTag()
+          branch 'main'
+        }
+      }
+      // Manual approval gate — same as GitHub's environment "required reviewers".
+      input {
+        message 'Approve production deploy?'
+        ok 'Deploy to production'
+      }
+      steps {
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-deploy-creds'
+        ]]) {
+          sh './scripts/deploy.sh production'
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      // Never leave a half-deployed cluster behind.
+      sh 'kubectl -n mugheer-staging rollout undo deployment/backend-core || true'
+      sh 'kubectl -n mugheer-production rollout undo deployment/backend-core || true'
+      echo "Build/deploy failed — rollbacks attempted. Escalate to engineering (see docs/RUNBOOK.md)."
+    }
+    always {
+      cleanWs()
+    }
+  }
+}

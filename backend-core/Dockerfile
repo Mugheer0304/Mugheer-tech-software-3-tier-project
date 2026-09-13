@@ -17,6 +17,10 @@ RUN useradd --uid 1001 --create-home appuser
 COPY --from=build --chown=appuser:appuser /app/node_modules ./node_modules
 COPY --from=build --chown=appuser:appuser /app/dist ./dist
 COPY --from=build --chown=appuser:appuser /app/prisma ./prisma
+# package.json + tsconfig.json are required for `npx prisma db seed` to run
+# the TypeScript seeder via ts-node
+COPY --from=build --chown=appuser:appuser /app/package.json ./package.json
+COPY --from=build --chown=appuser:appuser /app/tsconfig.json ./tsconfig.json
 USER appuser
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
